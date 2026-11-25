@@ -28,3 +28,86 @@
     python3 -m unittest discover -v
 
 资料读取器会列出各文件包含的消息和时间范围。演练记录只描述各参与方交给系统的输入。
+
+## 网关入口
+
+核心实现在 `edge_gateway/gateway.py`，只依赖标准库；`gateway.py` 是根目录命令入口。所有功率、时间和序号都是本地合成整数，不连接真实配电或充电设备。
+
+回放演练并把完整 JSON 结果打印到标准输出：
+
+```bash
+python3 gateway.py scenario examples/reduction-is-not-yet-capacity.jsonl
+python3 gateway.py scenario examples/independent-branch-and-new-envelope.jsonl
+```
+
+需要在回放后继续用同一状态查询时，显式指定状态文件：
+
+```bash
+python3 gateway.py scenario examples/independent-branch-and-new-envelope.jsonl \
+  --state /tmp/yard-state.json
+python3 gateway.py --state /tmp/yard-state.json --at 9 inspect --site yard --text
+```
+
+区域端、现场仿真端和调度台也可以分别调用：
+
+```bash
+STATE=/tmp/site.json
+rm -f "$STATE"
+
+# 区域端：发布包络、登记控制器、提出需求、暂停可中断需求
+python3 gateway.py --state "$STATE" --at 0 grid --site yard --revision 1 \
+  --from 0 --until 25 --total 20 --branch east=7 --branch west=7
+python3 gateway.py --state "$STATE" --at 0 controller --id e \
+  --site yard --boot 1 --branches east
+python3 gateway.py --state "$STATE" --at 1 request --demand a --site yard \
+  --branch east --device loader --earliest 1 --latest 3 --duration 12 \
+  --min 6 --max 6 --not-interruptible
+python3 gateway.py --state "$STATE" --at 1 request --demand flex --site yard \
+  --branch west --device truck --earliest 1 --latest 9 --duration 8 \
+  --min 3 --max 5 --interruptible
+python3 gateway.py --state "$STATE" --at 2 pause --demand flex --reason crew
+
+# 现场仿真端：请求授权、回报实际调整、上传计量快照
+python3 gateway.py --state "$STATE" --at 2 begin --demand a \
+  --controller e --boot 1 --plan 1
+python3 gateway.py --state "$STATE" --at 5 feed --demand a \
+  --controller e --boot 1 --plan 1 --state unknown
+python3 gateway.py --state "$STATE" --at 12 meter --site yard \
+  --branch east --observed-at 11 --power 6
+
+# 调度台：JSON 或中文文本看板
+python3 gateway.py --state "$STATE" --at 9 inspect --site yard
+python3 gateway.py --state "$STATE" --at 9 inspect --demand a --text
+
+# 重启后从同一 JSON 状态恢复；重复同一 begin 会按幂等决定处理
+python3 gateway.py --state "$STATE" --at 20 restart
+```
+
+完整的 self-power 释放、跨秒点计量和等待窗口重估，请直接回放上面的两个示例。
+
+也可以在 Python 中直接使用：
+
+```python
+from edge_gateway import Gateway
+
+gw = Gateway("/tmp/site.json")
+gw.handle(0, "grid", {...})
+gw.handle(2, "begin", {...})
+print(gw.inspect(at=9, site="yard"))
+```
+
+## 状态与安全规则
+
+- **拟定负载**：请求找到 `[start, start+duration)` 的可行安排后，只把最低连续功率计入同时段承诺；站点总上限和支路上限都会检查。
+- **已通知/扣住容量**：授权功率、降额目标和暂停通知会持久化。已通知降额不会立即释放 `hold_power`；未收到控制器的 `reduced` 或零外部功率 `self_power` 确认前，原占用继续计入上级站点包络。
+- **实际负载**：`feed` 保存控制器确认值，`meter` 保存独立观测。计量快照按 `observed_at` 对齐；只有所有相关支路具有同一 `observed_at` 时才合成站点瞬时总量，否则站点实测总量为 `null` 并说明原因。
+- **支路隔离**：某支路超限时生成 `branch:<site>:<branch>` 事件，只阻断共享该支路约束的新取电；其他支路仍受站点总上限检查，但不会被无关事件全场封锁。
+- **受限处置**：新包络使当前扣住容量超限或使已接受承诺无法安排时，会产生活动事件并列出受影响需求。可中断设备会收到降功率到最小值或暂停到零的持久通知；不可中断承诺不会被正常新增需求移动或削减。
+- **重启恢复**：状态原子写入 JSON。重启后保留授权、计划号、扣住容量、控制器代次、计量和事件；重复 `begin` 同一未释放计划返回幂等结果，不会新增冲突授权。控制器新 `boot` 不会把旧用量清零，旧代次的 `begin`/`feed` 会被拒绝且不应用。
+
+测试：
+
+```bash
+python3 -m unittest discover -v
+```
+

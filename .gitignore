@@ -9,4 +9,6 @@ build/
 coverage/
 __pycache__/
 *.py[cod]
+.edge-gateway-state.json
+.edge-gateway-state.*.json
 .DS_Store
