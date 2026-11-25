@@ -1,0 +1,12 @@
+{"at":0,"kind":"grid","record":{"site":"yard","revision":1,"from":0,"until":25,"total":20,"branches":{"east":7,"west":7}}}
+{"at":0,"kind":"controller","record":{"id":"e","site":"yard","boot":1,"branches":["east"]}}
+{"at":0,"kind":"controller","record":{"id":"w","site":"yard","boot":1,"branches":["west"]}}
+{"at":1,"kind":"request","record":{"demand":"a","site":"yard","branch":"east","device":"a","earliest":1,"latest":3,"duration":12,"min":6,"max":6,"interruptible":false}}
+{"at":2,"kind":"begin","record":{"demand":"a","id":"e","boot":1,"plan":1}}
+{"at":3,"kind":"grid","record":{"site":"yard","revision":2,"from":3,"until":25,"total":20,"branches":{"east":3,"west":7}}}
+{"at":4,"kind":"request","record":{"demand":"b","site":"yard","branch":"west","device":"b","earliest":4,"latest":9,"duration":8,"min":4,"max":4,"interruptible":true}}
+{"at":5,"kind":"feed","record":{"demand":"a","id":"e","boot":1,"plan":1,"state":"unknown"}}
+{"at":6,"kind":"inspect","record":{"demand":"b"}}
+{"at":7,"kind":"grid","record":{"site":"yard","revision":3,"from":7,"until":25,"total":8,"branches":{"east":3,"west":7}}}
+{"at":8,"kind":"begin","record":{"demand":"b","id":"w","boot":1,"plan":2}}
+{"at":9,"kind":"inspect","record":{"site":"yard"}}
